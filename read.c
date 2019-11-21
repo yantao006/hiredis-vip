@@ -271,6 +271,7 @@ static int processBulkItem(redisReader *r) {
         } else {
             /* Only continue when the buffer contains the entire bulk item. */
             bytelen += len+2; /* include \r\n */
+            //printf("jenik, r->pos:%d, byetlen:%d, len:%d \n", r->pos, bytelen, r->len);
             if (r->pos+bytelen <= r->len) {
                 if (r->fn && r->fn->createString)
                     obj = r->fn->createString(cur,s+2,len);
@@ -402,10 +403,13 @@ static int processItem(redisReader *r) {
     case REDIS_REPLY_ERROR:
     case REDIS_REPLY_STATUS:
     case REDIS_REPLY_INTEGER:
+        //printf("processLineItem\n");
         return processLineItem(r);
     case REDIS_REPLY_STRING:
+        //printf("processBulkItem\n");
         return processBulkItem(r);
     case REDIS_REPLY_ARRAY:
+        //printf("processMultiBulkItem\n");
         return processMultiBulkItem(r);
     default:
         assert(NULL);
@@ -468,7 +472,9 @@ int redisReaderFeed(redisReader *r, const char *buf, size_t len) {
         }
 
         r->buf = newbuf;
+        printf("jenik len:%d \n", r->len);
         r->len = sdslen(r->buf);
+        printf("jenik len:%d \n", r->len);
     }
 
     return REDIS_OK;
@@ -484,8 +490,10 @@ int redisReaderGetReply(redisReader *r, void **reply) {
         return REDIS_ERR;
 
     /* When the buffer is empty, there will never be a reply. */
-    if (r->len == 0)
+    if (r->len == 0) {
+        printf("redisReader is empty\n");
         return REDIS_OK;
+    }
 
     /* Set first item to process when the stack is empty. */
     if (r->ridx == -1) {
@@ -516,10 +524,12 @@ int redisReaderGetReply(redisReader *r, void **reply) {
     }
 
     /* Emit a reply when there is one. */
+    printf("reply:%x \n", reply);
     if (r->ridx == -1) {
         if (reply != NULL)
             *reply = r->reply;
         r->reply = NULL;
     }
+    printf("redisReader reply:%d \n", *reply);
     return REDIS_OK;
 }

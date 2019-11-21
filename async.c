@@ -362,8 +362,10 @@ static void __redisAsyncDisconnect(redisAsyncContext *ac) {
 void redisAsyncDisconnect(redisAsyncContext *ac) {
     redisContext *c = &(ac->c);
     c->flags |= REDIS_DISCONNECTING;
-    if (!(c->flags & REDIS_IN_CALLBACK) && ac->replies.head == NULL)
+    if (!(c->flags & REDIS_IN_CALLBACK) && ac->replies.head == NULL) {
+        printf("redisAsyncDisconnect\n");
         __redisAsyncDisconnect(ac);
+    }
 }
 
 static int __redisGetSubscribeCallback(redisAsyncContext *ac, redisReply *reply, redisCallback *dstcb) {
@@ -424,6 +426,7 @@ void redisProcessCallbacks(redisAsyncContext *ac) {
             /* When the connection is being disconnected and there are
              * no more replies, this is the cue to really disconnect. */
             if (c->flags & REDIS_DISCONNECTING && sdslen(c->obuf) == 0) {
+                printf("redisProcessCallbacks 1\n");
                 __redisAsyncDisconnect(ac);
                 return;
             }
@@ -460,6 +463,7 @@ void redisProcessCallbacks(redisAsyncContext *ac) {
                 c->err = REDIS_ERR_OTHER;
                 snprintf(c->errstr,sizeof(c->errstr),"%s",((redisReply*)reply)->str);
                 c->reader->fn->freeObject(reply);
+                printf("redisProcessCallbacks 2\n");
                 __redisAsyncDisconnect(ac);
                 return;
             }
@@ -470,6 +474,7 @@ void redisProcessCallbacks(redisAsyncContext *ac) {
         }
 
         if (cb.fn != NULL) {
+            printf("run callback\n");
             __redisRunCallback(ac,&cb,reply);
             c->reader->fn->freeObject(reply);
 
@@ -488,8 +493,10 @@ void redisProcessCallbacks(redisAsyncContext *ac) {
     }
 
     /* Disconnect when there was an error reading the reply */
-    if (status != REDIS_OK)
+    if (status != REDIS_OK) {
+        printf("redisProcessCallbacks 3\n");
         __redisAsyncDisconnect(ac);
+    }
 }
 
 /* Internal helper function to detect socket status the first time a read or
@@ -504,6 +511,7 @@ static int __redisAsyncHandleConnect(redisAsyncContext *ac) {
             return REDIS_OK;
 
         if (ac->onConnect) ac->onConnect(ac,REDIS_ERR);
+        printf("__redisAsyncHandleConnect\n");
         __redisAsyncDisconnect(ac);
         return REDIS_ERR;
     }
@@ -530,10 +538,12 @@ void redisAsyncHandleRead(redisAsyncContext *ac) {
     }
 
     if (redisBufferRead(c) == REDIS_ERR) {
+        printf("redisAsyncHandleRead\n");
         __redisAsyncDisconnect(ac);
     } else {
         /* Always re-schedule reads */
         _EL_ADD_READ(ac);
+        printf("jenik redisAsyncHandleRead callbacks:%d \n", ac->c.reader->len);
         redisProcessCallbacks(ac);
     }
 }
@@ -552,6 +562,7 @@ void redisAsyncHandleWrite(redisAsyncContext *ac) {
     }
 
     if (redisBufferWrite(c,&done) == REDIS_ERR) {
+        printf("redisAsyncHandleWrite\n");
         __redisAsyncDisconnect(ac);
     } else {
         /* Continue writing when not done, stop writing otherwise */

@@ -679,6 +679,7 @@ redisContext *redisConnect(const char *ip, int port) {
         return NULL;
 
     c->flags |= REDIS_BLOCK;
+    printf("redisConnect\n");
     redisContextConnectTcp(c,ip,port,NULL);
     return c;
 }
@@ -691,6 +692,7 @@ redisContext *redisConnectWithTimeout(const char *ip, int port, const struct tim
         return NULL;
 
     c->flags |= REDIS_BLOCK;
+    printf("redisConnectWithTimeout\n");
     redisContextConnectTcp(c,ip,port,&tv);
     return c;
 }
@@ -703,6 +705,7 @@ redisContext *redisConnectNonBlock(const char *ip, int port) {
         return NULL;
 
     c->flags &= ~REDIS_BLOCK;
+    printf("redisConnectNonBlock\n");
     redisContextConnectTcp(c,ip,port,NULL);
     return c;
 }
@@ -711,6 +714,7 @@ redisContext *redisConnectBindNonBlock(const char *ip, int port,
                                        const char *source_addr) {
     redisContext *c = redisContextInit();
     c->flags &= ~REDIS_BLOCK;
+    printf("redisConnectBindNonBlock\n");
     redisContextConnectBindTcp(c,ip,port,NULL,source_addr);
     return c;
 }
@@ -720,6 +724,7 @@ redisContext *redisConnectBindNonBlockWithReuse(const char *ip, int port,
     redisContext *c = redisContextInit();
     c->flags &= ~REDIS_BLOCK;
     c->flags |= REDIS_REUSEADDR;
+    printf("redisConnectBindNonBlockWithReuse\n");
     redisContextConnectBindTcp(c,ip,port,NULL,source_addr);
     return c;
 }
@@ -792,14 +797,16 @@ int redisEnableKeepAlive(redisContext *c) {
  * After this function is called, you may use redisContextReadReply to
  * see if there is a reply available. */
 int redisBufferRead(redisContext *c) {
-    char buf[1024*16];
+    char buf[1024*32];
     int nread;
 
     /* Return early when the context has seen an error. */
     if (c->err)
         return REDIS_ERR;
 
+    printf("jenik bufsize:%d \n", sizeof(buf));
     nread = read(c->fd,buf,sizeof(buf));
+    printf("jenik nread:%d \n", nread);
     if (nread == -1) {
         if ((errno == EAGAIN && !(c->flags & REDIS_BLOCK)) || (errno == EINTR)) {
             /* Try again later */
@@ -888,11 +895,16 @@ int redisGetReply(redisContext *c, void **reply) {
     void *aux = NULL;
 
     /* Try to read pending replies */
-    if (redisGetReplyFromReader(c,&aux) == REDIS_ERR)
+    if (redisGetReplyFromReader(c,&aux) == REDIS_ERR) {
+        printf("redisGetReplyFromReader REDIS_ERR\n");
         return REDIS_ERR;
+    }
 
+    //printf("aa jenik len:%d \n", c->reader->len);
+    printf("aux:%d, c->flags:%x \n", aux, c->flags);
     /* For the blocking context, flush output buffer and read reply */
     if (aux == NULL && c->flags & REDIS_BLOCK) {
+        printf("enter get aux\n");
         /* Write until done */
         do {
             if (redisBufferWrite(c,&wdone) == REDIS_ERR)
@@ -930,6 +942,7 @@ int __redisAppendCommand(redisContext *c, const char *cmd, size_t len) {
     }
 
     c->obuf = newbuf;
+    //printf("jenik len:%d \n", c->reader->len);
     return REDIS_OK;
 }
 
@@ -1008,8 +1021,9 @@ static void *__redisBlockForReply(redisContext *c) {
     void *reply;
 
     if (c->flags & REDIS_BLOCK) {
-        if (redisGetReply(c,&reply) != REDIS_OK)
+        if (redisGetReply(c,&reply) != REDIS_OK) {
             return NULL;
+        }
         return reply;
     }
     return NULL;

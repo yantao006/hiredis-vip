@@ -152,6 +152,7 @@ static void *__redisBlockForReply(redisContext *c) {
     if (c->flags & REDIS_BLOCK) {
         if (redisGetReply(c,&reply) != REDIS_OK)
             return NULL;
+        printf("bb jenik len:%d \n", c->reader->len);
         return reply;
     }
     return NULL;
@@ -2888,6 +2889,7 @@ static int __redisClusterGetReply(redisClusterContext *cc, int slot_num, void **
         return REDIS_ERR;
     }
 
+    printf("aa jenik len:%d \n", c->reader->len);
     if(redisGetReply(c, reply) != REDIS_OK)
     {
         __redisClusterSetError(cc, c->err, c->errstr);
