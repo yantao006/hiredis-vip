@@ -792,6 +792,7 @@ parse_cluster_slots(redisClusterContext *cc,
         return NULL;
     }
 
+    // 定义nodes
     nodes = dictCreate(&clusterNodesDictType, NULL);
     if(nodes == NULL){
         __redisClusterSetError(cc,REDIS_ERR_OOM,
@@ -816,6 +817,7 @@ parse_cluster_slots(redisClusterContext *cc,
             goto error;
         }
         
+        // 定义一个slot
         slot = cluster_slot_create(NULL);
         if(slot == NULL){
             __redisClusterSetError(cc, REDIS_ERR_OOM, 
@@ -826,6 +828,7 @@ parse_cluster_slots(redisClusterContext *cc,
         //one slots region
         for(idx = 0; idx < elem_slots->elements; idx ++){
             if(idx == 0){
+                // idx == 0 为begin slot值
                 elem_slots_begin = elem_slots->element[idx];
                 if(elem_slots_begin->type != REDIS_REPLY_INTEGER){
                     __redisClusterSetError(cc, REDIS_ERR_OTHER, 
@@ -833,8 +836,10 @@ parse_cluster_slots(redisClusterContext *cc,
                         "slot begin is not an integer.");
                     goto error;
                 }
+                // 填充
                 slot->start = (int)(elem_slots_begin->integer);
             }else if(idx == 1){
+                // idx == 1 为end slot值
                 elem_slots_end = elem_slots->element[idx];
                 if(elem_slots_end->type != REDIS_REPLY_INTEGER){
                     __redisClusterSetError(cc, REDIS_ERR_OTHER, 
@@ -843,6 +848,7 @@ parse_cluster_slots(redisClusterContext *cc,
                     goto error;
                 }
                 
+                // 填充
                 slot->end = (int)(elem_slots_end->integer);
 
                 if(slot->start > slot->end){
@@ -875,6 +881,7 @@ parse_cluster_slots(redisClusterContext *cc,
 
                 //this is master.
                 if(idx == 2){
+                    // idx == 2 为node节点的ip port
                     address = sdsnewlen(elem_ip->str, elem_ip->len);
                     address = sdscatfmt(address, ":%i", elem_port->integer);
 
@@ -940,6 +947,7 @@ parse_cluster_slots(redisClusterContext *cc,
                             listClusterNodeDestructor;
                     }
 
+                    // 从节点添加到主节点的slaves链表中
                     listAddNodeTail(master->slaves, slave);
                 }
             }
@@ -1267,7 +1275,7 @@ cluster_update_route_by_addr(redisClusterContext *cc,
     dictEntry *den;
     listIter *lit = NULL;
     listNode *lnode;
-    cluster_node *table[REDIS_CLUSTER_SLOTS];
+    cluster_node *table[REDIS_CLUSTER_SLOTS]; // 构造一个map，key为slot值，value为对应的cluster_node
     uint32_t j, k;
 
     if(cc == NULL){
@@ -1283,6 +1291,7 @@ cluster_update_route_by_addr(redisClusterContext *cc,
     if(cc->connect_timeout){
         c = redisConnectWithTimeout(ip, port, *cc->connect_timeout);
     }else{
+        // 建立socket连接
         c = redisConnect(ip, port);
     }
         
@@ -1300,6 +1309,7 @@ cluster_update_route_by_addr(redisClusterContext *cc,
     }
 
     if(cc->flags & HIRCLUSTER_FLAG_ROUTE_USE_SLOTS){
+        // 发送"CLUSTER SLOTS"命令，获取全部slots->nodes映射信息
         reply = redisCommand(c, REDIS_COMMAND_CLUSTER_SLOTS);
         if(reply == NULL){
             if (c->err == REDIS_ERR_TIMEOUT) {
@@ -1322,6 +1332,7 @@ cluster_update_route_by_addr(redisClusterContext *cc,
             goto error;
         }
 
+        // 解析reply，根据slots->nodes信息，填充redisClusterContext的结构体
         nodes = parse_cluster_slots(cc, reply, cc->flags);
     } else {
         reply = redisCommand(c, REDIS_COMMAND_CLUSTER_NODES);
@@ -1925,6 +1936,7 @@ cluster_update_route(redisClusterContext *cc)
             continue;
         }
 
+        // 需要遍历每一个node（host:port），更新route ??
         ret = cluster_update_route_by_addr(cc, node->host, node->port);
         if(ret == REDIS_OK)
         {
@@ -2260,6 +2272,8 @@ int redisClusterSetOptionAddNode(redisClusterContext *cc, const char *addr)
         node->host = ip;
         node->port = port;
 
+        // key: node->addr (1.2.3.4:3679)
+        // value: node
         dictAdd(cc->nodes, sdsnewlen(node->addr, sdslen(node->addr)), node);
     }
     
@@ -4423,6 +4437,7 @@ static redisAsyncContext *actx_get_after_update_route_by_slot(
     return ac;
 }
 
+// 初始化构造一个redisClusterAsyncContext
 redisClusterAsyncContext *redisClusterAsyncConnect(const char *addrs, int flags) {
 
     redisClusterContext *cc;
@@ -4704,6 +4719,7 @@ error:
     }
 }
 
+// 关注！是否可以解析批量命令？批量命令格式如何？
 int redisClusterAsyncFormattedCommand(redisClusterAsyncContext *acc, 
     redisClusterCallbackFn *fn, void *privdata, char *cmd, int len) {
     

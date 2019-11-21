@@ -263,6 +263,7 @@ static int __redisShiftCallback(redisCallbackList *list, redisCallback *target) 
     return REDIS_ERR;
 }
 
+// 执行业务方自定义的回调函数
 static void __redisRunCallback(redisAsyncContext *ac, redisCallback *cb, redisReply *reply) {
     redisContext *c = &(ac->c);
     if (cb->fn != NULL) {
@@ -422,6 +423,8 @@ void redisProcessCallbacks(redisAsyncContext *ac) {
     int status;
 
     while((status = redisGetReply(c,&reply)) == REDIS_OK) {
+        // 这里有个问题、
+        // 非阻塞情况下，reply可能为null，但是并不代表所有的回调函数都已经执行完
         if (reply == NULL) {
             /* When the connection is being disconnected and there are
              * no more replies, this is the cue to really disconnect. */
@@ -443,6 +446,8 @@ void redisProcessCallbacks(redisAsyncContext *ac) {
 
         /* Even if the context is subscribed, pending regular callbacks will
          * get a reply before pub/sub messages arrive. */
+        // 从ac->replies callback链表中，pop出头节点callback
+        // Copy callback from heap to stack
         if (__redisShiftCallback(&ac->replies,&cb) != REDIS_OK) {
             /*
              * A spontaneous reply in a not-subscribed context can be the error
@@ -475,6 +480,7 @@ void redisProcessCallbacks(redisAsyncContext *ac) {
 
         if (cb.fn != NULL) {
             printf("run callback\n");
+            // 执行业务方自定义的回调函数
             __redisRunCallback(ac,&cb,reply);
             c->reader->fn->freeObject(reply);
 

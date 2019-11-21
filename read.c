@@ -239,27 +239,29 @@ static int processLineItem(redisReader *r) {
 
         /* Set reply if this is the root object. */
         if (r->ridx == 0) r->reply = obj;
-        moveToNextTask(r);
+        moveToNextTask(r); // 将redisReader->ridx移动到下一层，只针对Array类型？
         return REDIS_OK;
     }
 
     return REDIS_ERR;
 }
 
+// 解析string类型
 static int processBulkItem(redisReader *r) {
     redisReadTask *cur = &(r->rstack[r->ridx]);
-    void *obj = NULL;
+    void *obj = NULL; // 存放解析后的数据
     char *p, *s;
     long len;
     unsigned long bytelen;
     int success = 0;
 
-    p = r->buf+r->pos;
-    s = seekNewline(p,r->len-r->pos);
+    // 存储格式为：string_length \r\n string_value \r\n
+    p = r->buf+r->pos; // 获取偏移量
+    s = seekNewline(p,r->len-r->pos); // 读取偏移量后的数据,s指向p后的第一个"\r\n"
     if (s != NULL) {
         p = r->buf+r->pos;
-        bytelen = s-(r->buf+r->pos)+2; /* include \r\n */
-        len = readLongLong(p);
+        bytelen = s-(r->buf+r->pos)+2; /* include \r\n */ // 获取的数据长度
+        len = readLongLong(p); // 将p指向的字符串转为long整型
 
         if (len < 0) {
             /* The nil object can always be created. */
@@ -272,9 +274,10 @@ static int processBulkItem(redisReader *r) {
             /* Only continue when the buffer contains the entire bulk item. */
             bytelen += len+2; /* include \r\n */
             //printf("jenik, r->pos:%d, byetlen:%d, len:%d \n", r->pos, bytelen, r->len);
+            // 判断string大小是否超出redisReader的长度
             if (r->pos+bytelen <= r->len) {
                 if (r->fn && r->fn->createString)
-                    obj = r->fn->createString(cur,s+2,len);
+                    obj = r->fn->createString(cur,s+2,len); // 根据offset和length解析出string
                 else
                     obj = (void*)REDIS_REPLY_STRING;
                 success = 1;
@@ -288,10 +291,11 @@ static int processBulkItem(redisReader *r) {
                 return REDIS_ERR;
             }
 
+            // 更新偏移量
             r->pos += bytelen;
 
             /* Set reply if this is the root object. */
-            if (r->ridx == 0) r->reply = obj;
+            if (r->ridx == 0) r->reply = obj; // 将obj添加到redisReader->reply中
             moveToNextTask(r);
             return REDIS_OK;
         }
@@ -366,11 +370,13 @@ static int processMultiBulkItem(redisReader *r) {
 }
 
 static int processItem(redisReader *r) {
+    // 解析每一个redisReadTask
     redisReadTask *cur = &(r->rstack[r->ridx]);
     char *p;
 
     /* check if we need to read type */
     if (cur->type < 0) {
+        // 首先根据第一个字符，判断数据类型
         if ((p = readBytes(r,1)) != NULL) {
             switch (p[0]) {
             case '-':
@@ -399,6 +405,7 @@ static int processItem(redisReader *r) {
     }
 
     /* process typed item */
+    // 根据不同的数据类型，分别进行解析
     switch(cur->type) {
     case REDIS_REPLY_ERROR:
     case REDIS_REPLY_STATUS:
@@ -465,14 +472,18 @@ int redisReaderFeed(redisReader *r, const char *buf, size_t len) {
             assert(r->buf != NULL);
         }
 
+        // 将buffer追加到redisReader->buf后
+        // 返回值newbuf用来判断追加操作是否成功
         newbuf = sdscatlen(r->buf,buf,len);
         if (newbuf == NULL) {
             __redisReaderSetErrorOOM(r);
             return REDIS_ERR;
         }
 
+        // 更新redisReader->buf
         r->buf = newbuf;
         printf("jenik len:%d \n", r->len);
+        // 更新redisReader->len
         r->len = sdslen(r->buf);
         printf("jenik len:%d \n", r->len);
     }
@@ -480,6 +491,7 @@ int redisReaderFeed(redisReader *r, const char *buf, size_t len) {
     return REDIS_OK;
 }
 
+// 从redisContext->redisReader中获取
 int redisReaderGetReply(redisReader *r, void **reply) {
     /* Default target pointer to NULL. */
     if (reply != NULL)
@@ -507,6 +519,7 @@ int redisReaderGetReply(redisReader *r, void **reply) {
     }
 
     /* Process items in reply. */
+    // r->ridx >= 0，则说明redisReader中有数据,将数据解析出，放入到r->reply中
     while (r->ridx >= 0)
         if (processItem(r) != REDIS_OK)
             break;
@@ -525,6 +538,7 @@ int redisReaderGetReply(redisReader *r, void **reply) {
 
     /* Emit a reply when there is one. */
     printf("reply:%x \n", reply);
+    // 当r->ridx==-1，说明已经将redisReader->reply中的数据全部提取出，放入到reply中
     if (r->ridx == -1) {
         if (reply != NULL)
             *reply = r->reply;

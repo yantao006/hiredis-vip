@@ -33,24 +33,26 @@
 struct dict;
 struct hilist;
 
+// cluster_node:对应一个redis server节点
 typedef struct cluster_node
 {
     sds name;
     sds addr;
     sds host;
     int port;
-    uint8_t role;
+    uint8_t role; // 主节点 or 从节点
     uint8_t myself;   /* myself ? */
     redisContext *con;
     redisAsyncContext *acon;
-    struct hilist *slots;
-    struct hilist *slaves;
+    struct hilist *slots; // 如果是主节点，则有对应的slots 链表
+    struct hilist *slaves; // 对应的从节点 链表
     int failure_count;
     void *data;     /* Not used by hiredis */
     struct hiarray *migrating;  /* copen_slot[] */
     struct hiarray *importing;  /* copen_slot[] */
 }cluster_node;
 
+// cluster_slot: 对应一段slot范围，cluster_node* 为对应的主节点
 typedef struct cluster_slot
 {
     uint32_t start;
@@ -58,6 +60,7 @@ typedef struct cluster_slot
     cluster_node *node; /* master that this slot region belong to */
 }cluster_slot;
 
+// 迁移中的slot？
 typedef struct copen_slot
 {
     uint32_t slot_num;  /* slot number */
@@ -87,7 +90,7 @@ typedef struct redisClusterContext {
     struct hiarray *slots;
 
     struct dict *nodes;
-    cluster_node *table[REDIS_CLUSTER_SLOTS];
+    cluster_node *table[REDIS_CLUSTER_SLOTS]; // 维护slot->cluster_node的映射
 
     uint64_t route_version;
 
@@ -163,7 +166,7 @@ typedef struct redisClusterAsyncContext {
     /* Not used by hiredis */
     void *data;
 
-    void *adapter;
+    void *adapter; //异步事件驱动适配器，具体可以是 ae or libevent
     adapterAttachFn *attach_fn;
 
     /* Called when either the connection is terminated due to an error or per

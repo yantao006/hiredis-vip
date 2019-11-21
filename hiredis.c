@@ -42,6 +42,7 @@
 #include "hiredis.h"
 #include "net.h"
 #include "sds.h"
+#include "hiutil.h"
 
 static redisReply *createReplyObject(int type);
 static void *createStringObject(const redisReadTask *task, char *str, size_t len);
@@ -805,6 +806,10 @@ int redisBufferRead(redisContext *c) {
         return REDIS_ERR;
 
     printf("jenik bufsize:%d \n", sizeof(buf));
+    printf("jenik rcvbuf size:%d \n", hi_get_rcvbuf(c->fd));
+    printf("jenik sndbuf size:%d \n", hi_get_sndbuf(c->fd));
+    //sleep(1);
+    // 从redisContext->fd中读取buffer
     nread = read(c->fd,buf,sizeof(buf));
     printf("jenik nread:%d \n", nread);
     if (nread == -1) {
@@ -826,6 +831,7 @@ int redisBufferRead(redisContext *c) {
         __redisSetError(c,REDIS_ERR_EOF,"Server closed the connection");
         return REDIS_ERR;
     } else {
+        // 将buffer填充到redisContext->redisReader中
         if (redisReaderFeed(c->reader,buf,nread) != REDIS_OK) {
             __redisSetError(c,c->reader->err,c->reader->errstr);
             return REDIS_ERR;
@@ -883,6 +889,7 @@ int redisBufferWrite(redisContext *c, int *done) {
 /* Internal helper function to try and get a reply from the reader,
  * or set an error in the context otherwise. */
 int redisGetReplyFromReader(redisContext *c, void **reply) {
+    // 从redisContext->redisReader中获取
     if (redisReaderGetReply(c->reader,reply) == REDIS_ERR) {
         __redisSetError(c,c->reader->err,c->reader->errstr);
         return REDIS_ERR;
@@ -890,11 +897,13 @@ int redisGetReplyFromReader(redisContext *c, void **reply) {
     return REDIS_OK;
 }
 
+// 从redisContext* c中获取reply，放入void** reply中
 int redisGetReply(redisContext *c, void **reply) {
     int wdone = 0;
     void *aux = NULL;
 
     /* Try to read pending replies */
+    // 从redisContext->redisReader中获取数据，放入到aux中
     if (redisGetReplyFromReader(c,&aux) == REDIS_ERR) {
         printf("redisGetReplyFromReader REDIS_ERR\n");
         return REDIS_ERR;
@@ -903,6 +912,8 @@ int redisGetReply(redisContext *c, void **reply) {
     //printf("aa jenik len:%d \n", c->reader->len);
     printf("aux:%d, c->flags:%x \n", aux, c->flags);
     /* For the blocking context, flush output buffer and read reply */
+    // 针对REDIS_BLOCK情况，如果aux为null，则继续等待redisBufferWrite写入，
+    // 然后redisBufferRead读取，直到aux有值
     if (aux == NULL && c->flags & REDIS_BLOCK) {
         printf("enter get aux\n");
         /* Write until done */
@@ -921,7 +932,9 @@ int redisGetReply(redisContext *c, void **reply) {
     }
 
     /* Set reply object */
-    if (reply != NULL) *reply = aux;
+    // 非阻塞情况下（c->flags & REDIS_BLOCK == false）, 
+    // 不会一直等待读取数据，aux可能为null
+    if (reply != NULL) *reply = aux; //*reply指向 aux数据
     return REDIS_OK;
 }
 
